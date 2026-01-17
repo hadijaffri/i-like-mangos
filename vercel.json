@@ -1,0 +1,43 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/**/*.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "*.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "*.js",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/chat",
+      "dest": "/api/chat.py"
+    },
+    {
+      "src": "/api/save",
+      "dest": "/api/save.py"
+    },
+    {
+      "src": "/api/coins",
+      "dest": "/api/coins.py"
+    },
+    {
+      "src": "/three.min.js",
+      "dest": "/three.min.js"
+    },
+    {
+      "src": "/shatterrealms_v5.html",
+      "dest": "/shatterrealms_v5.html"
+    },
+    {
+      "src": "/",
+      "dest": "/shatterrealms_v5.html"
+    }
+  ]
+}
