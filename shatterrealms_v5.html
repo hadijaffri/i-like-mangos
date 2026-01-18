@@ -239,11 +239,11 @@
             pointer-events: none;
         }
         
-        /* Chat System */
+        /* Chat System - positioned on right side to not block health */
         #chatContainer {
             position: fixed;
-            bottom: 100px;
-            left: 10px;
+            bottom: 20px;
+            right: 10px;
             width: 320px;
             max-height: 200px;
             background: rgba(0, 0, 0, 0.6);
@@ -4157,7 +4157,7 @@
                 // Melee weapons with different ranges
                 const ranges = { spear: 3.5, gungnir: 3.5, halberd: 3.2, bo_staff: 3.0, whip: 3.5, holy_lance: 3.2,
                                  dagger: 1.8, claws: 1.8, venom_dagger: 1.8, nunchucks: 2.0, sickle: 2.2 };
-                meleeAttack(item.damage, ranges[itemId] || 2.5);
+                meleeAttack(item.damage, ranges[itemId] || 2.5, itemId);
             }
             else if (item.type === 'ranged') {
                 // Ranged weapons
@@ -4254,18 +4254,46 @@
             }
         }
         
-        function meleeAttack(damage, range = 2.5) {
+        // Weapon animation types based on weapon characteristics
+        const weaponAnimations = {
+            // Slashing weapons - horizontal arc
+            sword: 'slash', katana: 'slash', excalibur: 'slash', kusanagi: 'slash', sickle: 'slash', scythe: 'slash',
+            // Stabbing weapons - forward thrust
+            spear: 'thrust', dagger: 'thrust', gungnir: 'thrust', halberd: 'thrust', holy_lance: 'thrust',
+            // Heavy weapons - overhead smash
+            axe: 'smash', hammer: 'smash', mace: 'smash', mjolnir: 'smash', anchor: 'smash', pickaxe: 'smash',
+            // Fast weapons - rapid multi-hit
+            claws: 'rapid', nunchucks: 'rapid', dagger: 'rapid',
+            // Spinning weapons - spin attack
+            flail: 'spin', chainsaw: 'spin', bo_staff: 'spin',
+            // Punching weapons - punch animation
+            gauntlet: 'punch', wrench: 'punch', shovel: 'punch',
+            // Whip weapons - crack animation
+            whip: 'whip'
+        };
+        let currentWeaponAnim = 'slash';
+
+        function meleeAttack(damage, range = 2.5, weaponId = 'sword') {
             // Apply damage bonuses
             if (playerState.rageModeActive) damage *= 2;
             if (playerState.berserkActive) damage *= 3;
 
-            // Start sword swing animation
+            // Set animation type based on weapon
+            currentWeaponAnim = weaponAnimations[weaponId] || 'slash';
+
+            // Start weapon swing animation
             swordSwinging = true;
             swordSwingTime = 0;
             if (swordMesh) swordMesh.visible = true;
 
-            // Play sword swing sound
-            SFX.swordSwing();
+            // Play appropriate sound based on weapon type
+            if (currentWeaponAnim === 'smash') {
+                SFX.swordSwing(); // Heavy sound
+            } else if (currentWeaponAnim === 'rapid') {
+                SFX.swordSwing(); // Quick sound
+            } else {
+                SFX.swordSwing();
+            }
 
             const raycaster = new THREE.Raycaster();
             raycaster.far = range;
@@ -5838,40 +5866,150 @@
 
             if (player) player.position.copy(playerState.position);
             
-            // Update sword position and animation
+            // Update weapon position and animation based on weapon type
             if (swordMesh) {
                 if (swordSwinging) {
                     swordSwingTime += dt;
-                    
-                    // Sword swing animation (300ms total)
-                    const swingDuration = 300;
-                    const progress = Math.min(swordSwingTime / swingDuration, 1);
-                    
-                    // Swing arc from right to left
-                    const swingAngle = Math.sin(progress * Math.PI) * 1.5;
-                    
-                    // Position sword in front of camera
+
                     const dir = new THREE.Vector3();
                     camera.getWorldDirection(dir);
-                    
                     const right = new THREE.Vector3();
                     right.crossVectors(camera.up, dir).normalize();
-                    
-                    // Start position (right side)
-                    const startOffset = 0.4 - progress * 0.6;
-                    
-                    swordMesh.position.copy(camera.position);
-                    swordMesh.position.add(dir.clone().multiplyScalar(0.5));
-                    swordMesh.position.add(right.clone().multiplyScalar(startOffset));
-                    swordMesh.position.y -= 0.3;
-                    
-                    // Rotate sword during swing
-                    swordMesh.rotation.set(
-                        camera.rotation.x - 0.5 + swingAngle * 0.3,
-                        camera.rotation.y + swingAngle,
-                        -0.3 + swingAngle * 0.5
-                    );
-                    
+
+                    // Different animation durations and styles per weapon type
+                    let swingDuration, progress;
+
+                    switch (currentWeaponAnim) {
+                        case 'slash': // Horizontal arc (swords, katanas)
+                            swingDuration = 300;
+                            progress = Math.min(swordSwingTime / swingDuration, 1);
+                            const slashAngle = Math.sin(progress * Math.PI) * 1.5;
+                            const slashOffset = 0.4 - progress * 0.8;
+                            swordMesh.position.copy(camera.position);
+                            swordMesh.position.add(dir.clone().multiplyScalar(0.5));
+                            swordMesh.position.add(right.clone().multiplyScalar(slashOffset));
+                            swordMesh.position.y -= 0.3;
+                            swordMesh.rotation.set(
+                                camera.rotation.x - 0.5 + slashAngle * 0.3,
+                                camera.rotation.y + slashAngle,
+                                -0.3 + slashAngle * 0.5
+                            );
+                            break;
+
+                        case 'thrust': // Forward stab (spears, daggers)
+                            swingDuration = 250;
+                            progress = Math.min(swordSwingTime / swingDuration, 1);
+                            const thrustDist = Math.sin(progress * Math.PI) * 0.8;
+                            swordMesh.position.copy(camera.position);
+                            swordMesh.position.add(dir.clone().multiplyScalar(0.3 + thrustDist));
+                            swordMesh.position.add(right.clone().multiplyScalar(0.15));
+                            swordMesh.position.y -= 0.25;
+                            swordMesh.rotation.set(
+                                camera.rotation.x - 1.2,
+                                camera.rotation.y,
+                                0
+                            );
+                            break;
+
+                        case 'smash': // Overhead smash (hammers, axes)
+                            swingDuration = 450;
+                            progress = Math.min(swordSwingTime / swingDuration, 1);
+                            const smashAngle = progress < 0.4 ?
+                                (progress / 0.4) * -1.5 : // Wind up
+                                -1.5 + ((progress - 0.4) / 0.6) * 3.0; // Smash down
+                            swordMesh.position.copy(camera.position);
+                            swordMesh.position.add(dir.clone().multiplyScalar(0.4));
+                            swordMesh.position.add(right.clone().multiplyScalar(0.2));
+                            swordMesh.position.y -= 0.1 + (progress > 0.4 ? (progress - 0.4) * 0.5 : 0);
+                            swordMesh.rotation.set(
+                                camera.rotation.x + smashAngle,
+                                camera.rotation.y,
+                                -0.2
+                            );
+                            break;
+
+                        case 'rapid': // Fast multi-hit (claws, nunchucks)
+                            swingDuration = 200;
+                            progress = Math.min(swordSwingTime / swingDuration, 1);
+                            const rapidAngle = Math.sin(progress * Math.PI * 3) * 0.8;
+                            const rapidSide = Math.cos(progress * Math.PI * 3) * 0.3;
+                            swordMesh.position.copy(camera.position);
+                            swordMesh.position.add(dir.clone().multiplyScalar(0.5));
+                            swordMesh.position.add(right.clone().multiplyScalar(rapidSide));
+                            swordMesh.position.y -= 0.3 + rapidAngle * 0.1;
+                            swordMesh.rotation.set(
+                                camera.rotation.x - 0.3 + rapidAngle * 0.2,
+                                camera.rotation.y + rapidAngle,
+                                rapidAngle * 0.3
+                            );
+                            break;
+
+                        case 'spin': // Spinning attack (flail, chainsaw)
+                            swingDuration = 400;
+                            progress = Math.min(swordSwingTime / swingDuration, 1);
+                            const spinAngle = progress * Math.PI * 2;
+                            const spinRadius = 0.4;
+                            swordMesh.position.copy(camera.position);
+                            swordMesh.position.add(dir.clone().multiplyScalar(0.4));
+                            swordMesh.position.x += Math.cos(spinAngle) * spinRadius;
+                            swordMesh.position.z += Math.sin(spinAngle) * spinRadius;
+                            swordMesh.position.y -= 0.3;
+                            swordMesh.rotation.set(
+                                camera.rotation.x,
+                                camera.rotation.y + spinAngle,
+                                Math.sin(spinAngle) * 0.5
+                            );
+                            break;
+
+                        case 'punch': // Punch forward (gauntlet)
+                            swingDuration = 200;
+                            progress = Math.min(swordSwingTime / swingDuration, 1);
+                            const punchDist = Math.sin(progress * Math.PI) * 0.6;
+                            const punchTwist = Math.sin(progress * Math.PI) * 0.5;
+                            swordMesh.position.copy(camera.position);
+                            swordMesh.position.add(dir.clone().multiplyScalar(0.3 + punchDist));
+                            swordMesh.position.add(right.clone().multiplyScalar(0.2 - progress * 0.1));
+                            swordMesh.position.y -= 0.35;
+                            swordMesh.rotation.set(
+                                camera.rotation.x - 1.0,
+                                camera.rotation.y + punchTwist,
+                                punchTwist
+                            );
+                            break;
+
+                        case 'whip': // Whip crack (whip)
+                            swingDuration = 350;
+                            progress = Math.min(swordSwingTime / swingDuration, 1);
+                            const whipAngle = progress < 0.3 ?
+                                (progress / 0.3) * -0.8 : // Wind back
+                                -0.8 + ((progress - 0.3) / 0.7) * 2.5; // Crack forward
+                            const whipDist = progress > 0.3 ? ((progress - 0.3) / 0.7) * 0.8 : 0;
+                            swordMesh.position.copy(camera.position);
+                            swordMesh.position.add(dir.clone().multiplyScalar(0.3 + whipDist));
+                            swordMesh.position.add(right.clone().multiplyScalar(0.25));
+                            swordMesh.position.y -= 0.2;
+                            swordMesh.rotation.set(
+                                camera.rotation.x + whipAngle,
+                                camera.rotation.y,
+                                -0.3
+                            );
+                            break;
+
+                        default: // Default slash
+                            swingDuration = 300;
+                            progress = Math.min(swordSwingTime / swingDuration, 1);
+                            const defAngle = Math.sin(progress * Math.PI) * 1.5;
+                            swordMesh.position.copy(camera.position);
+                            swordMesh.position.add(dir.clone().multiplyScalar(0.5));
+                            swordMesh.position.add(right.clone().multiplyScalar(0.4 - progress * 0.6));
+                            swordMesh.position.y -= 0.3;
+                            swordMesh.rotation.set(
+                                camera.rotation.x - 0.5 + defAngle * 0.3,
+                                camera.rotation.y + defAngle,
+                                -0.3 + defAngle * 0.5
+                            );
+                    }
+
                     if (progress >= 1) {
                         swordSwinging = false;
                         swordMesh.visible = false;
