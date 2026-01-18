@@ -28,6 +28,10 @@
       "dest": "/api/coins.py"
     },
     {
+      "src": "/api/stripe-checkout",
+      "dest": "/api/stripe-checkout.py"
+    },
+    {
       "src": "/three.min.js",
       "dest": "/three.min.js"
     },

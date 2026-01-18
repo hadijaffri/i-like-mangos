@@ -1,2 +1,2 @@
 # Python dependencies for Vercel serverless functions
-# Currently using only standard library modules
+stripe>=7.0.0
