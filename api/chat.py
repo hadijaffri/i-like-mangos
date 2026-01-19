@@ -1,74 +1,77 @@
 from http.server import BaseHTTPRequestHandler
 import json
-import re
+import os
+import urllib.request
+import urllib.error
 
-# Chat moderation - bad words and patterns
-BAD_WORDS = [
-    'fuck', 'shit', 'ass', 'bitch', 'damn', 'crap', 'dick', 'cock', 'pussy',
-    'bastard', 'slut', 'whore', 'fag', 'nigger', 'retard', 'kys', 'kill yourself',
-    'die', 'hate you', 'stupid', 'idiot', 'dumb', 'loser', 'stfu', 'wtf', 'fck',
-    'sht', 'btch', 'fuk', 'fuc', 'azz', 'a$$', 'b1tch', 'sh1t', 'f4ck', 'd1ck'
-]
+# Get Anthropic API key from environment
+ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
 
-# Patterns for harassment - includes spaced out letters and variations
-BAD_PATTERNS = [
-    r'go\s+die', r'kill\s+your', r'you\s+suck', r'ur\s+mom', r'your\s+mom',
-    r'u\s+r\s+bad', r'you\s+are\s+bad', r'noob', r'trash',
-    # Spaced out letters patterns
-    r'f\s*u\s*c\s*k', r's\s*h\s*i\s*t', r'b\s*i\s*t\s*c\s*h', r'd\s*i\s*c\s*k',
-    r'a\s*s\s*s', r'c\s*o\s*c\s*k', r'p\s*u\s*s\s*s\s*y', r'w\s*h\s*o\s*r\s*e',
-    r's\s*l\s*u\s*t', r'f\s*a\s*g', r'c\s*u\s*n\s*t', r'd\s*a\s*m\s*n',
-    # Leetspeak patterns
-    r'f[u4][c\(k]', r'sh[i1!]t', r'b[i1!]t[c\(]h', r'd[i1!][c\(]k',
-    r'[a4@]ss', r'[c\(][o0][c\(]k', r'p[u4]ss', r'wh[o0]r[e3]',
-    # Special character replacements
-    r'f[\*\.\-\_]+u[\*\.\-\_]+c[\*\.\-\_]+k',
-    r's[\*\.\-\_]+h[\*\.\-\_]+i[\*\.\-\_]+t',
-    # Common evasions
-    r'fvck', r'fcuk', r'phuck', r'phuk', r'sh!t', r'a\$\$', r'b!tch',
-]
+def moderate_with_claude(text):
+    """Use Claude to intelligently moderate chat messages"""
+    if not ANTHROPIC_API_KEY:
+        # Fallback to allowing message if no API key
+        return False, text
 
-def normalize_text(text):
-    """Normalize text by removing spaces and common substitutions"""
-    normalized = text.lower()
-    # Remove spaces between single letters
-    normalized = re.sub(r'(?<=\b\w)\s+(?=\w\b)', '', normalized)
-    # Common leetspeak substitutions
-    substitutions = {
-        '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', '7': 't',
-        '@': 'a', '$': 's', '!': 'i', '*': '', '.': '', '-': '', '_': ''
-    }
-    for old, new in substitutions.items():
-        normalized = normalized.replace(old, new)
-    return normalized
+    try:
+        # Prepare the request to Claude API
+        url = "https://api.anthropic.com/v1/messages"
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01"
+        }
+
+        prompt = f"""You are a chat moderator for a children's video game. Analyze this message and determine if it should be filtered.
+
+Filter if the message contains:
+- Profanity or swear words (including misspellings, leetspeak like "f4ck", spaced letters like "f u c k")
+- Hate speech, slurs, or discriminatory language
+- Harassment, bullying, or toxic behavior
+- Sexual content or innuendo
+- Threats or violence encouragement
+- Personal attacks
+
+Message to analyze: "{text}"
+
+Respond with ONLY a JSON object in this exact format:
+{{"filter": true/false, "reason": "brief reason if filtered"}}"""
+
+        data = json.dumps({
+            "model": "claude-3-haiku-20240307",
+            "max_tokens": 100,
+            "messages": [{"role": "user", "content": prompt}]
+        }).encode('utf-8')
+
+        req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+
+        with urllib.request.urlopen(req, timeout=5) as response:
+            result = json.loads(response.read().decode('utf-8'))
+            content = result.get('content', [{}])[0].get('text', '{}')
+
+            # Parse Claude's response
+            try:
+                decision = json.loads(content)
+                if decision.get('filter', False):
+                    return True, '*' * len(text)
+            except json.JSONDecodeError:
+                # If we can't parse, check for "true" in response
+                if '"filter": true' in content.lower() or '"filter":true' in content.lower():
+                    return True, '*' * len(text)
+
+        return False, text
+
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as e:
+        # On API error, allow message through (fail open for better UX)
+        print(f"Claude API error: {e}")
+        return False, text
+    except Exception as e:
+        print(f"Moderation error: {e}")
+        return False, text
 
 def moderate_message(text):
-    """Check if message contains inappropriate content"""
-    lower = text.lower()
-    normalized = normalize_text(text)
-
-    # Check bad words in both original and normalized text
-    for word in BAD_WORDS:
-        if word in lower or word in normalized:
-            return True, '*' * len(text)
-
-    # Check patterns
-    for pattern in BAD_PATTERNS:
-        if re.search(pattern, lower, re.IGNORECASE):
-            return True, '*' * len(text)
-        if re.search(pattern, normalized, re.IGNORECASE):
-            return True, '*' * len(text)
-
-    # Check for stretched words like "fuuuck" or "shiiiit"
-    stretched_patterns = [
-        r'f+u+c+k+', r's+h+i+t+', r'b+i+t+c+h+', r'd+i+c+k+', r'a+s+s+',
-        r'c+o+c+k+', r'p+u+s+s+y+', r'd+a+m+n+', r'c+r+a+p+'
-    ]
-    for pattern in stretched_patterns:
-        if re.search(pattern, lower):
-            return True, '*' * len(text)
-
-    return False, text
+    """Main moderation function using Claude AI"""
+    return moderate_with_claude(text)
 
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
